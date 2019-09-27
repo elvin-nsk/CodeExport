@@ -4,7 +4,7 @@ Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} form
    ClientHeight    =   5520
    ClientLeft      =   120
    ClientTop       =   465
-   ClientWidth     =   4425
+   ClientWidth     =   8190
    OleObjectBlob   =   "form.frx":0000
    StartUpPosition =   1  'CenterOwner
 End
@@ -15,56 +15,109 @@ Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
 Option Explicit
 
-'Microsoft Visual Basic for Applications Extensibility 5.3
-Private vb As Object
+Public repo As cls_Repo
+Public repo_col As Collection
+
+'Private Const ColorBlue& = &HC00000
+'Private Const ColorNormal& = &H80000012
+
+Private LastItem$
+
+
+Public Function ExportQueue()
+  For Each repo In repo_col
+    If repo.InQueue Then repo.Export
+  Next
+End Function
 
 Private Sub UserForm_Initialize()
+
   Dim vbp As Object 'VBProject
-  Set vb = Application.VBE
-  For Each vbp In vb.VBProjects
-    list.AddItem vbp.Name
+  
+  Set repo_col = New Collection
+  
+  For Each vbp In Application.VBE.VBProjects
+    Set repo = New cls_Repo
+    Set repo.VBProject = vbp
+    list.AddItem repo.Name
+    repo_col.Add Item:=repo, Key:=repo.Name
   Next
+  
+  cbQueue.Value = False
+  labLocked.Visible = False
+  AllVisible False
+  
+  LastItem = ""
+  
 End Sub
 
-Private Sub CreateDir(path)
-  Dim exist$: exist = Trim(Dir(path, vbDirectory))
-  If exist = "" Then Call MkDir(path)
+Private Sub UserForm_Terminate()
+  SaveLastItem
+  'Set vb = Nothing
+  Set repo = Nothing
+  Set repo_col = Nothing
 End Sub
 
-Private Sub exp_Click()
-  If list.ListIndex = -1 Then Exit Sub
+Private Sub btnBrowse_Click()
+  Dim f$
+  f = BrowseForFolderDlg(tbPath.Value, "Select Source Folder", 0)
+  If f <> "" Then tbPath.Value = f
+End Sub
 
-  Dim vbp As Object 'VBProject
-  Set vbp = vb.VBProjects.Item(list.ListIndex + 1)
+Private Sub btnExp_Click()
+  SaveLastItem
+  repo_col(LastItem).Export
+End Sub
 
-  Dim path$: path = CorelScriptTools.GetFolder
-  If Len(path) = 0 Then Exit Sub
+Private Sub btnOK_Click()
+  SaveLastItem
+  Unload Me
+End Sub
 
-  If cbIntoNewFolder.Value Then
-    path = path & "\" & vbp.Name
-    Call CreateDir(path)
+Private Sub list_Change()
+  
+  SaveLastItem
+  
+  LastItem = list.list(list.ListIndex)
+  
+  With repo_col(LastItem)
+    labLocked.Visible = .Locked
+    If Not .Locked Then
+      AllVisible True
+      cbQueue.Value = .InQueue
+      tbPath.Value = .ExportPath
+      cbSub.Value = .InSubfolder
+      tbSub.Value = .Subfolder
+      cbGMS.Value = .IsCopy
+    Else
+      AllVisible False
+    End If
+  End With
+  
+End Sub
+
+Private Function SaveLastItem()
+  If LastItem <> "" Then
+    'Debug.Print LastItem
+    With repo_col(LastItem)
+      If Not .Locked Then
+        .InQueue = cbQueue.Value
+        .ExportPath = tbPath.Value
+        .InSubfolder = cbSub.Value
+        .Subfolder = tbSub.Value
+        .IsCopy = cbGMS.Value
+        .Save
+      End If
+    End With
   End If
+End Function
 
-  Dim srcPath$: srcPath = path & "\source"
-  Call CreateDir(srcPath)
-
-  Dim vc As Object 'VBComponent
-  For Each vc In vbp.VBComponents
-    Dim fileName$
-    fileName = vc.Name
-
-    Select Case vc.Type
-      Case 1 'vbext_ct_StdModule
-        fileName = fileName & ".bas"
-      Case 2, 100 'vbext_ct_ClassModule, vbext_ct_Document
-        fileName = fileName & ".cls"
-      Case 3 'vbext_ct_MSForm
-        fileName = fileName & ".frm"
-    End Select
-
-    vc.Export srcPath & "\" & fileName
-  Next
-
-  FileSystem.FileCopy vbp.fileName, path & "\" & vbp.Name & ".gms"
-  MsgBox "Done!"
-End Sub
+Private Function AllVisible(v As Boolean)
+  cbQueue.Visible = v
+  labFolder.Visible = v
+  tbPath.Visible = v
+  btnBrowse.Visible = v
+  cbSub.Visible = v
+  tbSub.Visible = v
+  cbGMS.Visible = v
+End Function
